@@ -31,7 +31,6 @@ BLUE 	= \033[34m
 all:
 	$(MAKE) $(NAME)
 	printf "$(RESET)"
-	sudo setcap cap_net_raw+ep ft_ping
 
 debug:
 	$(MAKE) clean

@@ -79,23 +79,32 @@ void	receive_packet(t_data *data)
 	struct iphdr	*ip_hdr = (struct iphdr *)recv_buf;
 	struct icmphdr	*icmp_hdr = (struct icmphdr *)(recv_buf + (ip_hdr->ihl * 4));
 
-	if (icmp_hdr->un.echo.id != getpid())
+	if (icmp_hdr->un.echo.id == getpid())
 	{
+		float	elapsed = (float)(end.tv_sec - data->start.tv_sec) * 1000.0f +
+			(float)(end.tv_usec - data->start.tv_usec) / 1000.0f;
+		data->packets_received++;
+		data->total_rtt += elapsed;
+		data->total_rtt_sq += elapsed * elapsed;
+		data->min_rtt = MIN(data->min_rtt, elapsed);
+		data->max_rtt = MAX(data->max_rtt, elapsed);
+
+		char	source_ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &from.sin_addr, source_ip, sizeof(source_ip));
+
+		printf("%d bytes from %s: icmp_seq=%zu ttl=%u time=%.3f ms\n",
+			ip_hdr->ttl, source_ip, data->packets_sent, ip_hdr->ttl, elapsed);
+	}
+	else if (data->verbose && icmp_hdr->type != ICMP_ECHO)
+	{
+		char	source_ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &from.sin_addr, source_ip, sizeof(source_ip));
+
+		printf("From %s: icmp_type=%d icmp_code=%d\n",
+			source_ip, icmp_hdr->type, icmp_hdr->code);
 		return ;
 	}
-
-	float	elapsed = (float)(end.tv_sec - data->start.tv_sec) * 1000.0f +
-		(float)(end.tv_usec - data->start.tv_usec) / 1000.0f;
-	data->packets_received++;
-	data->total_rtt += elapsed;
-	data->total_rtt_sq += elapsed * elapsed;
-	data->min_rtt = MIN(data->min_rtt, elapsed);
-	data->max_rtt = MAX(data->max_rtt, elapsed);
-
-	printf("%d bytes from %s: icmp_seq=%zu ttl=%u time=%.3f ms\n",
-		ip_hdr->ttl, data->addr, data->packets_sent, ip_hdr->ttl, elapsed);
 }
-
 void	send_packet(t_data *data)
 {
 	struct icmp_packet	packet = {0};
@@ -122,14 +131,6 @@ void	sigint_handler(int signal)
 	g_stop = 1;
 }
 
-void	clear(t_data *data)
-{
-	CLOSE(data->epoll_fd);
-	CLOSE(data->sockfd);
-	freeaddrinfo(data->res);
-	exit(64);
-}
-
 void	init(t_data *data)
 {
 	data->epoll_fd = epoll_create1(0);
@@ -143,7 +144,7 @@ void	init(t_data *data)
 	if (data->sockfd < 0)
 	{
 		perror("socket");
-		clear(data);
+		CLOSE(data->epoll_fd);
 	}
 
 	struct addrinfo hints = {0};
@@ -152,8 +153,10 @@ void	init(t_data *data)
 	hints.ai_protocol = IPPROTO_ICMP;
 	if (getaddrinfo(data->host, NULL, &hints, &data->res) != 0)
 	{
-		perror("getaddrinfo");
-		clear(data);
+		dprintf(2, "ft_ping: unknown host\n");
+		CLOSE(data->epoll_fd);
+		CLOSE(data->sockfd);
+		exit(1);
 	}
 
 	struct epoll_event ev = {0};
@@ -163,7 +166,10 @@ void	init(t_data *data)
 	if (epoll_ctl(data->epoll_fd, EPOLL_CTL_ADD, data->sockfd, &ev) < 0)
 	{
 		perror("epoll_ctl");
-		clear(data);
+		CLOSE(data->epoll_fd);
+		CLOSE(data->sockfd);
+		freeaddrinfo(data->res);
+		exit(64);
 	}
 
 	data->addr = inet_ntoa(((struct sockaddr_in *)data->res->ai_addr)->sin_addr);
