@@ -83,7 +83,7 @@ static void	parse_options(char *arg, t_data *data)
 	}
 }
 
-void	parse_data(int argc, char **argv, t_data *data)
+void	parse(int argc, char **argv, t_data *data)
 {
 	for (int i = 1; i < argc; i++)
 	{

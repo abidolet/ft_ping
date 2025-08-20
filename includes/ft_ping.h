@@ -51,7 +51,7 @@ struct icmp_packet
 };
 
 // parse.c
-void	parse_data(int argc, char **argv, t_data *data);
+void	parse(int argc, char **argv, t_data *data);
 
 // run.c
 void	run(t_data *data);
